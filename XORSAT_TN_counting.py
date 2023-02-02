@@ -6,8 +6,8 @@ import json
 import os
 import signal
 from pysat.formula import CNF
-from pysat.solvers import Glucose3
-# import random # Why should I import this package if there is already the data for a lot of random 3-regular graphs ?
+from pysat.solvers import Glucose4
+import random 
 
 """
 - Those lists show which boolean variable (x_i) is connected to which XOR constraint (c_i).
@@ -109,12 +109,12 @@ def generate_extents(nb_variables, dim=2, k=3):
     return extents
 
 
-def xorTensor(var_dim=2, k=3):
+def xorTensor(parity, var_dim=2, k=3):
     dims = (var_dim,) * k
     tensor = cp.zeros(dims, dtype = float)
     for variable_ijk in range(var_dim**k):
         c = np.unravel_index(variable_ijk, dims) # Gives index of tensor
-        if np.sum(c) % 2 == 1:
+        if np.sum(c) % 2 == parity:
             tensor[c] = 1
     return tensor
 
@@ -126,36 +126,33 @@ def copyTensor(var_dim=2, k=3):
     return tensor
 
 
-def tensors_initialization(nb_variables):
-    nb_constraints = nb_variables
-    constraintTensor = xorTensor()
+def tensors_initialization(nb_variables, parity_vector):
     variableTensor = copyTensor()
-    print(constraintTensor)
-    print(variableTensor)
     tensors = []
-    for _ in range(nb_constraints):
-        tensors.append(constraintTensor)
+    for parity in parity_vector:
+        tensors.append(xorTensor(parity = parity))
     for _ in range(nb_variables):
         tensors.append(variableTensor)
     return tensors
 
 
-def count_theoretical_result(clauses):
+def count_theoretical_result(clauses, parity_vector):
     # Initialize CNF format
     cnf = CNF()
 
     # Transform each XORSAT clause to 4 SAT clauses
-    for clause in clauses:
+    for clause, parity in zip(clauses, parity_vector):
         a, b, c = clause
         a+=1; b+=1; c+=1
-        cnf.append([a, b, c])
-        cnf.append([a, -b, -c])
-        cnf.append([-a, b, -c])
-        cnf.append([-a, -b, c])
+        flip = int((-1)**parity)
+        cnf.append([a, b, -flip *c])
+        cnf.append([a, -b, flip * c])
+        cnf.append([-a, b, flip * c])
+        cnf.append([-a, -b, -flip * c])
 
     # Initialize solver
-    solver = Glucose3(bootstrap_with=cnf.clauses) # Glucose3 seems to be faster than Solver in my case
-    
+    solver = Glucose4(bootstrap_with=cnf.clauses) # Glucose3 seems to be faster than Solver (testing Glucose4)
+
     # Count theoretical number of solutions
     count = 0
     while solver.solve():
@@ -193,11 +190,14 @@ def main(N, sample, show_neighbours = False, show_GPU_info = False):
         print('Variable neighbours are :')
         print(variable_neighbours)
 
+    M = N # M is the number of constraints and in this case, it is equal to the number of variables
+    parity_vector = np.random.choice([0, 1], size = M)
+    # print(f"  * The parity vector is: p = {parity_vector}")
     # Generate the tensor network and contract it
     nb_variables = len(variable_neighbours)
     expr = generate_initial_expr(constraint_neighbours, variable_neighbours)
     # modes_in, num_modes_in = generate_modes_in(constraint_neighbours, variable_neighbours)
-    tensors_list = tensors_initialization(nb_variables)
+    tensors_list = tensors_initialization(nb_variables, parity_vector)
     with cuquantum.Network(expr, *tensors_list) as tn:
         path, info = tn.contract_path({'samples': 500})
         # print(info) 
@@ -212,9 +212,8 @@ def main(N, sample, show_neighbours = False, show_GPU_info = False):
         tn.autotune(iterations=5)
         result = tn.contract()
     # n.free() # Use this line if the network is not used in a context (the 'with <Tensor Network> as tn:')
-
     # Evaluate theoretical result
-    th_result = count_theoretical_result(constraint_neighbours)
+    th_result = count_theoretical_result(constraint_neighbours, parity_vector)
 
     # Print results and if they match or not
     print(f"  * Result of the contraction is: {int(result)}")
@@ -234,36 +233,47 @@ class TimeoutException(Exception):
 def timeout_handler(signum, frame): # the inputs are not used here, but they are necessary for it to work
     raise TimeoutException("Timeout expired")
 
-time_limit = 300 # Set the time limit
+time_limit = 240 # Set the time limit
 
 signal.signal(signal.SIGALRM, timeout_handler) # Register the signal handler
 
 signal.alarm(time_limit) # Set the alarm
 
 try:
-    if __name__ == "__main__": # I tested with N = 100 and it worked under 3 minutes on my laptop
+    if __name__ == "__main__": # I tested with N = 116 and it worked under 4 minutes on my laptop (Nvidia RTX3060 GPU)
         # Initialize data (N=8 and sample=0 outputs 2 solutions, N=8 and sample=4 outputs 1 solution)
-        N = 8
-        nb_samples = 1
-        samples = [4]
+        # N = 8
+        # nb_samples = 1
+        # samples = [4]
         # samples = np.arange(0, nb_samples) # Take the first nb_samples samples
         # samples = [random.randint(0, 99) for _ in range(nb_samples)] # Do tests with random samples
         show_neighbours = False # Show the arrays taken from the .json file
         show_GPU_info = False # Show the information of the GPU used
 
+        # Define values for randomized tests
+        nb_tests = 2
+        N_min = 8
+        N_max = 100
+        path = "Data/3regularGraphs/"
+        directories = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+        numbers = [int(d.replace("N", "")) for d in directories if d.startswith("N")]
+
         # Clear the terminal to have a nice output
         os.system("clear")
 
         # Start the simulations
-        print(f"For N = {N}, we have:")
-        for sample in samples:
-            print(f"- For sample number {sample}:")
+        # print(f"For N = {N}, we have:")
+        for i in range(nb_tests):
+            print(f"- Test {i}:")
+            N = random.choice(numbers)
+            sample = random.randint(0, 99)
+            print(f"  * N = {N} with sample{sample}")
             main(N, sample,
                 show_neighbours=show_neighbours,
                 show_GPU_info=show_GPU_info)
 except TimeoutException:
     print("Timeout expired...")
-except Exception as e:
-    print(e)
+except Exception as error:
+    print(error)
 finally:
     signal.alarm(0) # Reset the alarm
