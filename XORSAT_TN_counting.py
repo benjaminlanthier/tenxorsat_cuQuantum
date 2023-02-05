@@ -200,7 +200,9 @@ def main(N, sample, show_neighbours = False, show_GPU_info = False):
     tensors_list = tensors_initialization(nb_variables, parity_vector)
     with cuquantum.Network(expr, *tensors_list) as tn:
         path, info = tn.contract_path({'samples': 500})
-        # print(info) 
+        # path1, info1 = tn.qualifiers_in.all() # testing some functions...
+        # print(info)
+        # print(info.intermediate_modes)
         '''
         info contains: 
             - largest intermediate,
@@ -242,32 +244,29 @@ signal.alarm(time_limit) # Set the alarm
 try:
     if __name__ == "__main__": # I tested with N = 116 and it worked under 4 minutes on my laptop (Nvidia RTX3060 GPU)
         # Initialize data (N=8 and sample=0 outputs 2 solutions, N=8 and sample=4 outputs 1 solution)
-        # N = 8
+        N = 8
         # nb_samples = 1
-        # samples = [4]
+        samples = [0]
         # samples = np.arange(0, nb_samples) # Take the first nb_samples samples
         # samples = [random.randint(0, 99) for _ in range(nb_samples)] # Do tests with random samples
         show_neighbours = False # Show the arrays taken from the .json file
         show_GPU_info = False # Show the information of the GPU used
 
         # Define values for randomized tests
-        nb_tests = 2
-        N_min = 8
-        N_max = 100
-        path = "Data/3regularGraphs/"
-        directories = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
-        numbers = [int(d.replace("N", "")) for d in directories if d.startswith("N")]
+        # nb_tests = 2
+        # N_min = 8
+        # N_max = 100
+        # path = "Data/3regularGraphs/"
+        # directories = [d for d in os.listdir(path) if os.path.isdir(os.path.join(path, d))]
+        # numbers = [int(d.replace("N", "")) for d in directories if d.startswith("N")]
 
         # Clear the terminal to have a nice output
         os.system("clear")
 
         # Start the simulations
         # print(f"For N = {N}, we have:")
-        for i in range(nb_tests):
-            print(f"- Test {i}:")
-            N = random.choice(numbers)
-            sample = random.randint(0, 99)
-            print(f"  * N = {N} with sample{sample}")
+        for sample in samples:
+            # print(f"  * N = {N} with sample{sample}")
             main(N, sample,
                 show_neighbours=show_neighbours,
                 show_GPU_info=show_GPU_info)
