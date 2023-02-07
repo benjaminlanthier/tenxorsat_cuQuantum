@@ -70,6 +70,19 @@ class random_3Regular_XORSAT:
 os.system("clear")
 
 def step_by_step_contraction(N, sample, show_subscripts=False):
+    """
+    Purpose:
+        Contract the tensor network one step at a time in order to be able to play with the
+        network during the contraction.
+    
+    Inputs:
+        * N (int): Number of variables in the network.
+        * sample (int): The chosen sample to read the .json file.
+
+    Outputs:
+        * theoretical_result (int): The theoretical number of solutions found by the pySAT solver.
+        * result (int): The number of solutions found by the complete contraction of the network.
+    """
     XORSAT_problem = random_3Regular_XORSAT(N, sample)
     XORSAT_problem.get_data_from_json()
     tensors_list = XORSAT_problem.initialize_tensors()
@@ -88,6 +101,7 @@ def step_by_step_contraction(N, sample, show_subscripts=False):
         if show_subscripts:
             print(f"expr after contraction step {i+1}: {expr}")
         if len(expr.split(',')) == 2:
+            print(f"expr after contraction step {number_of_contractions}: None (we have an integer...)")
             print("------------------------------")
             with cuquantum.Network(expr, *tensors_list) as tn:
                 _, info = tn.contract_path({'samples': 500}) # Why specify {'samples': 500} ?
@@ -104,7 +118,10 @@ def step_by_step_contraction(N, sample, show_subscripts=False):
         print(f"Result after network contraction: {result}")
         print("  -> Step by step implentation failed...")
 
+    return theoretical_result, result
+
+
 if __name__ == "__main__":
     N = 8
-    sample = 0
-    step_by_step_contraction(N, sample, show_subscripts=True)
+    sample = 2
+    theo_result, contract_result = step_by_step_contraction(N, sample, show_subscripts=True)
