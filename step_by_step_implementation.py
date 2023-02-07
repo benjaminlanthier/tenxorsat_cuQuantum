@@ -30,23 +30,39 @@ class random_3Regular_XORSAT:
         self.parity_vector = np.random.choice([0, 1], size = self.number_of_constraints)
     
     def get_data_from_json(self):
+        """
+        Collect data from a .json file.
+        """
         graph = json.load(open(f"Data/3regularGraphs/N{self.number_of_variables}/{self.sample}.json"))
         self.constraint_neighbours = graph["graph"]["constraint_neighbors"]
         self.variable_neighbours = graph["graph"]["variable_neighbors"]
 
     def initialize_tensors(self):
+        """
+        Generate the initial list of tensors in the right order.
+        """
         self.operands = tensors_initialization(self.number_of_variables, self.parity_vector)
         return self.operands
 
     def get_theoretical_result(self):
+        """
+        Evaluate the theoretical number of solutions for the given XORSAT problem.
+        """
         theoretical_result = count_theoretical_result(self.constraint_neighbours, self.parity_vector)
         return theoretical_result
 
     def get_initial_expr(self):
+        """
+        Generate the initial expr for the tensors in the right order.
+        """
         self.expr = generate_initial_expr(self.constraint_neighbours, self.variable_neighbours)
         return self.expr
 
     def update_info(self, path, new_ids):
+        """
+        Update the list of tensors and the expr after the one contraction step, given
+        by cuquantum.Network.contract_path().
+        """
         self.expr, self.operands, info = update_expr_and_tensors(path, self.operands, self.expr, new_ids)
         return self.expr, self.operands, info
 

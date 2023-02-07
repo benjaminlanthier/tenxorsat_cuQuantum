@@ -10,7 +10,7 @@ from pysat.solvers import Glucose4
 
 
 
-def generate_initial_expr(constraint_neighbours, variable_neighbours):
+def generate_initial_expr(constraint_neighbours: list, variable_neighbours: list):
     """
     Purpose:
         Translate the variables and constraints neighbours notation to einsum format for the initial part.
@@ -64,8 +64,8 @@ def generate_initial_expr(constraint_neighbours, variable_neighbours):
 
     # Generate the expr necessary to use the cuquantum.Network class from the ids_dict dictionary
     initial_expr = ','.join(ids_dict.values())
-    print(initial_expr)
-    return initial_expr#, ids_dict
+    # print(f"Initial expr: {initial_expr}")
+    return initial_expr
 
 
 def update_expr_and_tensors(path: list, tensors_list: list, old_expr: str, new_ids: str):
@@ -79,19 +79,21 @@ def update_expr_and_tensors(path: list, tensors_list: list, old_expr: str, new_i
         * tensors_list (list of arrays): List of all the tensors represented
         in the tensor network.
         * old_expr (string): Previous 'expr' string given at the tensor network.
-        * new_ids (string): New einsum ids for the new tensor.
+        * new_ids (string): Einsum ids for the new tensor.
 
     Outputs:
         * new_expr (string): The new 'expr' string after only one contraction
         in the network.
         * new_tensors_list (list of arrays): Updated tensors list after the
         contraction of 2 previous tensors.
+        * new_info (Optimizer information): Information on the contraction of
+        the tensor network.
     """
 
     # Get the ids of the tensors that will be contracted
     tensors_contracted = path[0] # First contraction done by the path
-    t1id = tensors_contracted[0] # Number of the first tensor
-    t2id = tensors_contracted[1] # Number of the second tensor
+    t1id = tensors_contracted[0] # id number of the first tensor
+    t2id = tensors_contracted[1] # id number of the second tensor
 
     # Update the old_expr_list to remove the contracted tensors ids and add the new one at the end
     old_expr_list = old_expr.split(',')
@@ -105,14 +107,17 @@ def update_expr_and_tensors(path: list, tensors_list: list, old_expr: str, new_i
     ti, tj = tensors_list[t1id], tensors_list[t2id]
     subscripts = ','.join([str_id1_to_remove, str_id2_to_remove]) + '->' + new_ids
     new_tensor = cuquantum.contract(subscripts, *[ti, tj])
-    # new_tensor = np.einsum(subscripts, ti, tj)
 
-    # Remove the old tensors from the tensors list and add the new one at the end
+    # Remove the contracted tensors from 'tensors_list' and add the new one at the end
     tensors_to_remove = [t1id, t2id]
     new_tensors_list = [tensor for i, tensor in enumerate(tensors_list) if i not in tensors_to_remove]
     new_tensors_list.append(new_tensor)
 
-    return new_expr, new_tensors_list
+    # Find the new info from those updated inputs
+    with cuquantum.Network(new_expr, *new_tensors_list) as tn:
+        _, new_info = tn.contract_path() # Why specify {'samples': 500} ?
+
+    return new_expr, new_tensors_list, new_info
 
 
 def explicit_tn_contraction(initial_expr: str, initial_tensors_list: list, nb_sweeps=1):
@@ -132,7 +137,7 @@ def explicit_tn_contraction(initial_expr: str, initial_tensors_list: list, nb_sw
         * result (int or float64): Number of solutions for the given 3XORSAT problem
         after the full contraction of the tensor network.
     """
-    cuquantum.contract
+
     print(nb_sweeps)
     expr = initial_expr
     tensors_list = initial_tensors_list
@@ -147,9 +152,23 @@ def explicit_tn_contraction(initial_expr: str, initial_tensors_list: list, nb_sw
         # Update expr and tensors_list using optimized path's first step
         expr, tensors_list = update_expr_and_tensors(optimized_path, tensors_list)
 
-        # Should I add a "de-contraction" (QR or SVD) step before the sweeps?
+        # Decompose (SVD or QR) the contracted tensor
 
-        # Do the sweeps, which will completely modify the 'expr' and the 'tensors_list'...
+        # Do the sweeps (which could completely modify the 'expr' and the 'tensors_list') PROBLEM...?
+
+    """
+        At this point, 'expr' and 'tensors_list' should be updated by a single contraction step from
+        the given path. Now, what is left to do ?
+        Steps to follow:
+            1 - SVD/QR decompose this new tensor in order to see if there is redundance or not.
+                * If there is not, go to the next step given by the new path evaluated after this
+                    first contraction.
+            2 - If we eliminated redundance after this decomposition, we need to propagate this info
+                to the network, up to the point where it is not impacted by it anymore (do the sweeps).
+            3 - Once the sweeps are over, modify the 'expr' and the 'tensors_list'.
+            4 - Build the network that represents this updated version and re-do those steps until
+                it is entirely contracted.
+    """
 
     result = tensors_list[0]
     return result
@@ -228,6 +247,23 @@ def tensors_initialization(nb_variables, parity_vector):
         tensors.append(variableTensor)
     return tensors
 
+
+def get_tensors_from_network(tn):
+    """
+    Purpose:
+        Extract tensors data out of the cuquantum Network class.
+
+    Input:
+        * tn (cuquantum.Network class): Tensor network generated by the Network
+        class of cuquantum.
+
+    Output:
+        * readable_tensors_list (list of arrays): The current tensors in the network.
+    """
+    
+    # tn.operands outputs a 'CupyTensor' object, unreadable directly
+    readable_tensors_list = [cupyTensor_object.to() for cupyTensor_object in tn.operands]
+    return readable_tensors_list
 
 def count_theoretical_result(clauses, parity_vector):
     """
@@ -308,10 +344,27 @@ def main(N, sample, show_neighbours = False, show_GPU_info = False):
     # modes_in, num_modes_in = generate_modes_in(constraint_neighbours, variable_neighbours)
     tensors_list = tensors_initialization(nb_variables, parity_vector)
     with cuquantum.Network(expr, *tensors_list) as tn:
-        print(f"Some info about tn: {tn}")
+    # tn = cuquantum.Network(expr, *tensors_list)
+        print(f"Some info about tn edges per vertex: {tn.inputs}") # tn.inputs
+        # print(f"Some info about tn: {tn.inputs.}")
         _, info = tn.contract_path({'samples': 500})
         # path1, info1 = tn.qualifiers_in.all() # testing some functions...
+        initial_path = info.path
+        print('----------')
         print(info)
+        print('----------')
+        # print(tn.__getattribute__()))
+        # for i in range(len(tn.operands)):
+        #     tensor = tn.operands_data[i]
+        #     ids = tn.allocator # tn.mode_map_ord_to_user.copy()
+        #     print(f"Tensor {i} in the list: {tensor}") # cp.asnumpy(tensor)
+        current_tensors_list = get_tensors_from_network(tn)
+        current_subscripts = tn.inputs
+        # new_list = cuquantum.cutensornet._internal.tensor_ifc_cupy.CupyTensor(cp.array([1,2,3,4,5])).to()
+        for i in range(len(tn.operands)):
+            print(f"Tensor {i}:\n {current_tensors_list[i]}, \nwith subscripts: {current_subscripts[i]}\n")
+        print('----------')
+
         # for i, tree in enumerate(info.path):
         #     print(f"The contraction between tensors {tree[0]} and {tree[1]} gives a tensor with indices {info.intermediate_modes[i]}")
         '''
@@ -324,8 +377,9 @@ def main(N, sample, show_neighbours = False, show_GPU_info = False):
         '''
         tn.autotune(iterations=5)
         result = tn.contract()
-    new_expr, new_tensors_list = update_expr_and_tensors(info.path, tensors_list, expr, info.intermediate_modes[0])
-    # n.free() # Use this line if the network is not used in a context (the 'with <Tensor Network> as tn:')
+    
+    new_expr, new_tensors_list, new_Info = update_expr_and_tensors(info.path, tensors_list, expr, info.intermediate_modes[0])
+    # tn.free() # Use this line if the network is not used in a context (the 'with <Tensor Network> as tn:')
     
     # Evaluate theoretical result
     th_result = count_theoretical_result(constraint_neighbours, parity_vector)
@@ -348,7 +402,7 @@ class TimeoutException(Exception):
 def timeout_handler(signum, frame): # the inputs are not used here, but they are necessary for it to work
     raise TimeoutException("Timeout expired")
 
-time_limit = 240 # Set the time limit
+time_limit = 240 # Set the time limit to 4 minutes
 
 signal.signal(signal.SIGALRM, timeout_handler) # Register the signal handler
 
