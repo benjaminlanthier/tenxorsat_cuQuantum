@@ -28,7 +28,7 @@ class random_3Regular_XORSAT:
         self.number_of_variables = number_of_variables
         self.number_of_constraints = number_of_variables
         self.parity_vector = np.random.choice([0, 1], size = self.number_of_constraints)
-    
+
     def get_data_from_json(self):
         """
         Collect data from a .json file.
@@ -58,16 +58,15 @@ class random_3Regular_XORSAT:
         self.expr = generate_initial_expr(self.constraint_neighbours, self.variable_neighbours)
         return self.expr
 
-    def update_info(self, path, new_ids):
+    def update_info(self, pair_to_contract, new_ids):
         """
-        Update the list of tensors and the expr after the one contraction step, given
+        Update the list of tensors and the expr after one contraction step, given
         by cuquantum.Network.contract_path().
         """
-        self.expr, self.operands, info = update_expr_and_tensors(path, self.operands, self.expr, new_ids)
-        return self.expr, self.operands, info
+        self.expr, self.operands = update_expr_and_tensors(pair_to_contract, self.operands, self.expr, new_ids)
+        return self.expr, self.operands #, info
 
 
-os.system("clear")
 
 def step_by_step_contraction(N, sample, show_subscripts=False):
     """
@@ -83,45 +82,48 @@ def step_by_step_contraction(N, sample, show_subscripts=False):
         * theoretical_result (int): The theoretical number of solutions found by the pySAT solver.
         * result (int): The number of solutions found by the complete contraction of the network.
     """
+
+    # Initialize the problem
     XORSAT_problem = random_3Regular_XORSAT(N, sample)
     XORSAT_problem.get_data_from_json()
     tensors_list = XORSAT_problem.initialize_tensors()
-    theoretical_result = XORSAT_problem.get_theoretical_result()
     expr = XORSAT_problem.get_initial_expr()
-    number_of_contractions = 2*N - 1
+
+    # Get the theoretical result
+    theoretical_result = XORSAT_problem.get_theoretical_result()
 
     if show_subscripts:
         print(f"expr at the start (step 0): {expr}")
 
+    # Get the optimized info\path
     with cuquantum.Network(expr, *tensors_list) as tn:
         _, info = tn.contract_path({"samples": 500})
 
+    # Contract network one step at a time
+    number_of_contractions = 2*N - 1
     for i in range(number_of_contractions):
-        expr, tensors_list, info = XORSAT_problem.update_info(info.path, info.intermediate_modes[0])
+        expr, tensors_list = XORSAT_problem.update_info(info.path[i], info.intermediate_modes[i])
         if show_subscripts:
             print(f"expr after contraction step {i+1}: {expr}")
+
+        # If there are only 2 subscripts left in `expr`, contract everything
         if len(expr.split(',')) == 2:
-            print(f"expr after contraction step {number_of_contractions}: None (we have an integer...)")
-            print("------------------------------")
-            with cuquantum.Network(expr, *tensors_list) as tn:
-                _, info = tn.contract_path({'samples': 500}) # Why specify {'samples': 500} ?
-                tn.autotune(iterations=5)
-                result = tn.contract()
+            result = cuquantum.contract(expr, *tensors_list)
+            if show_subscripts:
+                print(f"expr after contraction step {number_of_contractions}: {None}")
             break
 
+    print(f"\nTheoretical result is: {theoretical_result}")
+    print(f"Result after network contraction: {result}")
     if theoretical_result == result:
-        print(f"Theoretical result is: {theoretical_result}")
-        print(f"Result after network contraction: {result}")
-        print("  -> Step by step implementation succeeded!")
+        print("  -> Step by step implementation succeeded!\n")
     else:
-        print(f"Theoretical result is: {theoretical_result}")
-        print(f"Result after network contraction: {result}")
-        print("  -> Step by step implentation failed...")
+        print("  -> Step by step implentation failed...\n")
 
     return theoretical_result, result
 
 
 if __name__ == "__main__":
-    N = 8
-    sample = 2
-    theo_result, contract_result = step_by_step_contraction(N, sample, show_subscripts=True)
+    os.system("clear")
+    N = 8; sample = 0; show_subscripts = False
+    theo_result, contract_result = step_by_step_contraction(N, sample, show_subscripts=show_subscripts)

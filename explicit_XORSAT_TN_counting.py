@@ -68,14 +68,14 @@ def generate_initial_expr(constraint_neighbours: list, variable_neighbours: list
     return initial_expr
 
 
-def update_expr_and_tensors(path: list, tensors_list: list, old_expr: str, new_ids: str):
+def update_expr_and_tensors(pair_to_contract: tuple, tensors_list: list, old_expr: str, new_ids: str):
     """
     Purpose:
         Update the 'expr' and the 'tensors_list' in the tensor network from
         the path evaluated with cuquantum.Network().contract_path.
 
     Inputs:
-        * path (list of tuples): The optimized path given by cuquantum.Network.contract_path().
+        * pair_to_contract (tuple): Pair of tensors to contract.
         * tensors_list (list of arrays): List of all the tensors represented
         in the tensor network.
         * old_expr (string): Previous 'expr' string given at the tensor network.
@@ -91,9 +91,9 @@ def update_expr_and_tensors(path: list, tensors_list: list, old_expr: str, new_i
     """
 
     # Get the ids of the tensors that will be contracted
-    tensors_contracted = path[0] # First contraction done by the path
-    t1id = tensors_contracted[0] # id number of the first tensor
-    t2id = tensors_contracted[1] # id number of the second tensor
+    # tensors_contracted = path[0] # First contraction done by the path
+    t1id = pair_to_contract[0] # id number of the first tensor
+    t2id = pair_to_contract[1] # id number of the second tensor
 
     # Update the old_expr_list to remove the contracted tensors ids and add the new one at the end
     old_expr_list = old_expr.split(',')
@@ -113,11 +113,11 @@ def update_expr_and_tensors(path: list, tensors_list: list, old_expr: str, new_i
     new_tensors_list = [tensor for i, tensor in enumerate(tensors_list) if i not in tensors_to_remove]
     new_tensors_list.append(new_tensor)
 
-    # Find the new info from those updated inputs
-    with cuquantum.Network(new_expr, *new_tensors_list) as tn:
-        _, new_info = tn.contract_path() # Why specify {'samples': 500} ?
+    # # Find the new info from those updated inputs
+    # with cuquantum.Network(new_expr, *new_tensors_list) as tn:
+    #     _, new_info = tn.contract_path({'samples': 100})
 
-    return new_expr, new_tensors_list, new_info
+    return new_expr, new_tensors_list #, new_info
 
 
 def explicit_tn_contraction(initial_expr: str, initial_tensors_list: list, nb_sweeps=1):
@@ -174,7 +174,12 @@ def explicit_tn_contraction(initial_expr: str, initial_tensors_list: list, nb_sw
     return result
 
 
-def sweeps():
+def svd(tensor, tensor_indices: str):
+    # TO DO
+    pass
+
+
+def sweeps(nb_sweeps: int):
     # TO DO
     pass
 
@@ -182,7 +187,7 @@ def sweeps():
 def xorTensor(parity, var_dim=2, k=3):
     """
     Purpose:
-        Generate the XOR constraint tensor.
+        Generate the XOR (constraint) tensor.
 
     Inputs:
         * parity (bool): Boolean value that tells if the XOR contraint is satisfied when the
@@ -207,7 +212,7 @@ def xorTensor(parity, var_dim=2, k=3):
 def copyTensor(var_dim=2, k=3):
     """
     Purpose:
-        Generate the COPY variable tensor.
+        Generate the COPY (variable) tensor.
 
     Inputs:
         * var_dim (int): This means that the variables can take 'var_dim' values. In this case,
