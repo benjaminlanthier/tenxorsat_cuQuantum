@@ -64,7 +64,7 @@ class random_3Regular_XORSAT:
         by cuquantum.Network.contract_path().
         """
         self.expr, self.operands = update_expr_and_tensors(pair_to_contract, self.operands, self.expr, new_ids)
-        return self.expr, self.operands #, info
+        return self.expr, self.operands
 
 
 
@@ -113,17 +113,18 @@ def step_by_step_contraction(N, sample, show_subscripts=False):
                 print(f"expr after contraction step {number_of_contractions}: {None}")
             break
 
-    print(f"\nTheoretical result is: {theoretical_result}")
-    print(f"Result after network contraction: {result}")
-    if theoretical_result == result:
-        print("  -> Step by step implementation succeeded!\n")
-    else:
-        print("  -> Step by step implentation failed...\n")
-
     return theoretical_result, result
+
 
 
 if __name__ == "__main__":
     os.system("clear")
     N = 8; sample = 0; show_subscripts = False
     theo_result, contract_result = step_by_step_contraction(N, sample, show_subscripts=show_subscripts)
+
+    print(f"\nTheoretical result is: {theo_result}")
+    print(f"Result after network contraction: {contract_result}")
+    if theo_result == contract_result:
+        print("  -> Step by step implementation succeeded!\n")
+    else:
+        print("  -> Step by step implentation failed...\n")
